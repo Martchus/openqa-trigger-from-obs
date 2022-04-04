@@ -195,10 +195,8 @@ def openqa_call_start_distri(flavor_distri):
 
 def openqa_call_start_meta_variables(meta_variables):
     if not meta_variables:
-        return 'VERSION=$version\"'
-
-    return '''VERSION=$version \\\\
- ''' + meta_variables + '\"'
+        return 'VERSION=$version'
+    return 'VERSION=$version' + meta_variables
 
 def pre_openqa_call_start(repos):
     return ''
@@ -236,12 +234,32 @@ for flavor in {FLAVORALIASLIST,}; do
         ''' + openqa_call_news(news, news_archs) + '''
         }
         fi
-        echo "/usr/bin/openqa-cli api -X post isos?async=1 \\\\\"
+        echo "product_id=\$(/usr/bin/openqa-cli api -X post isos?async=1 \\\\\"
 (
  echo \" DISTRI=$distri \\\\
  ARCH=$arch \\\\
  BUILD=$build1 \\\\
- ''' + openqa_call_start_meta_variables(meta_variables)
+ ''' + openqa_call_start_meta_variables(meta_variables) + '''
+) | jq '.scheduled_product_id')
+'timeout=\${timeout:-480}
+poll_interval=\${poll_inverval:-10}
+response=\$(openqa-cli api \"isos/$product_id\")
+status=\$(echo \"$response\" | jq -r '.status')
+while [[ \$status != scheduled ]]; then
+  timeout=\$((timeout - poll_interval))
+  if [[ \$timeout -le 0 ]]; then
+    echo \"timeout exceeded when waiting for scheduled product \$product_id\"
+  fi
+  sleep \"\$poll_inverval\"
+  response=\$(openqa-cli api --osd \"isos/$product_id\")
+  status=\$(echo \"$response\" | jq -r '.status')
+done
+error=\$(echo \"\$response\" | jq '.results | .error')
+if [[ \$error != null ]]; then
+  echo \"unable to schedule product \$product_id: \$error\"
+  exit 1
+fi'
+\"'''
 
 openqa_call_legacy_builds_link=''
 
